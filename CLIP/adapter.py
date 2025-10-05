@@ -9,7 +9,6 @@ from torch.nn import functional as F
 from PIL import Image
 
 
-
 # Residual CLIP Adapter
 class ClipAdapter(nn.Module):
     def __init__(self, c_in, bottleneck=768):
@@ -35,9 +34,8 @@ class CLIP_Inplanted(nn.Module):
         self.clipmodel = clip_model
         self.image_encoder = clip_model.visual
         self.features = features
-        self.seg_adapters = nn.ModuleList( [ClipAdapter(1024, bottleneck=768) for i in range(len(features))] )
-        self.det_adapters = nn.ModuleList( [ClipAdapter(1024, bottleneck=768) for i in range(len(features))] )
-
+        self.seg_adapters = nn.ModuleList([ClipAdapter(1024, bottleneck=768) for i in range(len(features))])
+        self.det_adapters = nn.ModuleList([ClipAdapter(1024, bottleneck=768) for i in range(len(features))])
 
     def forward(self, x):
         x = self.image_encoder.conv1(x)
@@ -64,6 +62,7 @@ class CLIP_Inplanted(nn.Module):
                 attn_out.append(attn)
             else:
                 x, attn_map = self.image_encoder.transformer.resblocks[i](x, attn_mask=None)
+            
             if (i + 1) in self.features:
                 seg_adapt_med, seg_adapt_out = self.seg_adapters[self.features.index(i+1)](x)
                 det_adapt_med, det_adapt_out = self.det_adapters[self.features.index(i+1)](x)
@@ -73,12 +72,16 @@ class CLIP_Inplanted(nn.Module):
                 seg_patch_tokens.append(seg_adapt_med)
                 det_patch_tokens.append(det_adapt_med)
 
-        B, C, L = attn_out[0].shape
-        H = int(math.sqrt(L-1))
-        out_attn = torch.zeros([H, H]).to('cuda')
+        # Fix: Only process attention if attn_out has elements
+        if len(attn_out) > 0:
+            B, C, L = attn_out[0].shape
+            H = int(math.sqrt(L-1))
+            out_attn = torch.zeros([H, H]).to(x.device)
 
-        for i in range(len(attn)):
-            out_attn = out_attn + attn_out[i][0, 0, 1:].view(H, H)
+            # Fix: Loop through attn_out length, not attn length
+            for i in range(len(attn_out)):
+                out_attn = out_attn + attn_out[i][0, 0, 1:].view(H, H)
+
         x = x.permute(1, 0, 2)
 
         seg_patch_tokens = [seg_patch_tokens[t].permute(1, 0, 2) for t in range(len(seg_patch_tokens))]
@@ -91,7 +94,3 @@ class CLIP_Inplanted(nn.Module):
             pooled = pooled @ self.image_encoder.proj
 
         return pooled, seg_patch_tokens, det_patch_tokens
-
-
-
-
