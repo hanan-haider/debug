@@ -100,7 +100,7 @@ def main():
         loss_list = []
         idx = 0
         for (image, image_label, mask, seg_idx) in tqdm(train_loader):
-            if idx % (len(train_loader) // 5) == 0:
+            if idx > 0 and idx % (len(train_loader) // 5) == 0:
                 score = test(args, model, test_loader, text_feature_list[CLASS_INDEX[args.obj]])
                 if score >= save_score:
                     save_score = score
